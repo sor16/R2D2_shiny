@@ -1,12 +1,3 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
-
 library(shiny)
 library(extraDistr)
 library(ggplot2)
@@ -57,26 +48,28 @@ ui <- fluidPage(
     fluidRow(
         column(3,
                wellPanel(
-                   h3('R2 prior parameterization'),
-                   h4("(mean,precision)"),
-                   sliderInput("mu",
-                               "Mean",
-                               value=0.5, 
-                               min=0,max=1,step=0.01),
-                   sliderInput("tau",
-                               "Precision",
-                               value=100, 
-                               min=4,max=1000,step=1),
-                   h4("(a,b)"),
-                   sliderInput("a",
-                               "a",
-                               value=8, 
-                               min=0,max=20,step=0.1),
-                   sliderInput("b",
-                               "b",
-                               value=8, 
-                               min=0,max=20,step=0.1),
-                   h3('Prior concentration'),
+                   radioButtons("param","R2 prior parameterization",choiceNames=c("(mean,precision)","(a,b)"),choiceValues=c('mutau','ab')),
+                   conditionalPanel(condition = "input.param == 'mutau'",
+                           sliderInput("mu",
+                                       "Mean",
+                                       value=0.5, 
+                                       min=0,max=1,step=0.01),
+                           sliderInput("tau",
+                                       "Precision",
+                                       value=50, 
+                                       min=4,max=100,step=1)
+                    ),
+                   conditionalPanel(condition = "input.param == 'ab'",
+                       sliderInput("a",
+                                   "a",
+                                   value=get_ab_beta_param(0.5,100)$a, 
+                                   min=0,max=20,step=0.1),
+                       sliderInput("b",
+                                   "b",
+                                   value=get_ab_beta_param(0.5,100)$b, 
+                                   min=0,max=20,step=0.1)
+                   ),
+                   h4('Prior concentration'),
                    sliderInput("a_pi",
                                "a_pi",
                                value=1, 
@@ -92,13 +85,12 @@ ui <- fluidPage(
                    sliderInput("N",
                                "Number of samples",
                                value = 1000, 
-                               min = 0,max=10000),
+                               min = 0,max=10000,step=10),
                    sliderInput("bins",
                                "Number of bins:",
                                min = 0,
                                max = 100,
-                               value = 50),
-                   submitButton("Submit")
+                               value = 50)
                )
                
         ),
@@ -134,29 +126,44 @@ server <- function(input, output,session) {
     })
     
     observeEvent(input$mu, {
-        updateSliderInput(session, "tau", min=round(1/(input$mu*(1-input$mu))))
-        shape <- get_ab_beta_param(input$mu,input$tau)
-        updateSliderInput(session, "a", value=shape$a)
-        updateSliderInput(session, "b", value=shape$b)
+        if(input$param=='mutau'){
+            updateSliderInput(session, "tau", min=ceiling(1/(input$mu*(1-input$mu))))
+            shape <- get_ab_beta_param(input$mu,input$tau)
+            updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
+            updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
+            updateSliderInput(session, "a", value=shape$a)
+            updateSliderInput(session, "b", value=shape$b)
+        }
         
     })
     
     observeEvent(input$tau, {
-        shape <- get_ab_beta_param(input$mu,input$tau)
-        updateSliderInput(session, "a", value=shape$a)
-        updateSliderInput(session, "b", value=shape$b)
+        if(input$param=='mutau'){
+            shape <- get_ab_beta_param(input$mu,input$tau)
+            updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
+            updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
+            updateSliderInput(session, "a", value=shape$a)
+            updateSliderInput(session, "b", value=shape$b)
+        }
+
     })
     
     observeEvent(input$a, {
-        mutau <- get_mutau_beta_param(input$a,input$b) 
-        updateSliderInput(session, "mu", value=mutau$mu)
-        updateSliderInput(session, "tau", value=mutau$tau)
+        if(input$param=='ab'){
+            mutau <- get_mutau_beta_param(input$a,input$b)
+            updateSliderInput(session, "tau", max=max(1000,ceiling(mutau$tau)))
+            updateSliderInput(session, "mu", value=mutau$mu)
+            updateSliderInput(session, "tau", value=mutau$tau)
+        }
     })
     
     observeEvent(input$b, {
-        mutau <- get_mutau_beta_param(input$a,input$b) 
-        updateSliderInput(session, "mu", value=mutau$mu)
-        updateSliderInput(session, "tau", value=mutau$tau)
+        if(input$param=='ab'){
+            mutau <- get_mutau_beta_param(input$a,input$b)
+            updateSliderInput(session, "tau", max=max(1000,ceiling(mutau$tau)))
+            updateSliderInput(session, "mu", value=mutau$mu)
+            updateSliderInput(session, "tau", value=mutau$tau)
+        }
     })
     output$R2_prior <- renderPlot({
         sample_list <- sample_R2D2()
