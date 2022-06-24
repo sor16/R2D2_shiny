@@ -168,24 +168,24 @@ server <- function(input, output,session) {
     output$R2_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(R2=sample_list$R2),aes(R2)) %>%
-        gg_histogram_style(expression(paste(R^{2}," - prior distribution")),input$bins) +
+        gg_histogram_style(expression(paste(R^{2}," - prior distribution (~Beta(a,b))")),input$bins) +
         scale_x_continuous(limits=c(0,1))
     })
     output$w_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(w=sample_list$w),aes(w)) %>%
-            gg_histogram_style(expression(paste(omega," - prior distribution")),input$bins)
+            gg_histogram_style(expression(paste(omega," - prior distribution (~BetaPrime(a,b))")),input$bins)
     })
     output$phi_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(phi=sample_list$phi[,1]),aes(phi)) %>%
-            gg_histogram_style(expression(paste(phi[j]," - prior distribution")),input$bins) +
+            gg_histogram_style(expression(paste(phi[j]," - marginal prior distribution (",phi,"~","Dirichlet(",a[pi],"...",a[pi],"))")),input$bins) +
             scale_x_continuous(limits=c(0,1))
     })
     output$beta_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(beta=sample_list$beta[,1]),aes(beta)) %>%
-        gg_histogram_style(expression(paste(beta[j]," - prior distribution")),input$bins) +
+        gg_histogram_style(expression(paste(beta[j]," - prior distribution (~N(0,",sigma^2,phi[j],omega,"))")),input$bins) +
         scale_x_continuous(limits=c(-3,3))
     })
 }
