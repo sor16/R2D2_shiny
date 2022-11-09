@@ -3,6 +3,7 @@ library(extraDistr)
 library(ggplot2)
 library(shinydashboard)
 library(dplyr)
+library(simstudy)
 
 gg_theme <- function(){
     theme_classic()+
@@ -22,16 +23,18 @@ gg_histogram_style <- function(p,title,n_bins){
         gg_theme()
 }
 
-get_ab_beta_param <- function(mu, tau) {
-    a  <- ((1 - mu)*tau - 1 / mu) * mu ^ 2
-    b <- a * (1 / mu - 1)
-    return(params = list(a=a,b=b))
+get_ab_beta_param <- function(mu, phi) {
+    shapes <- betaGetShapes(mu,phi)
+    # sigma2 <- mu*(1-mu)/(1+phi)
+    # a  <- ((1 - mu)/sigma2 - 1 / mu)
+    # b <- a * (1 / mu - 1)
+    return(params = list(a=shapes$shape1,b=shapes$shape2))
 }
 
-get_mutau_beta_param <- function(a, b) {
+get_muphi_beta_param <- function(a, b) {
     mu <- a/(a+b)
-    sigma2 <- a*b/((a+b)^2*(a+b+1))
-    return(params = list(mu=mu,tau=1/sigma2))
+    phi <- a+b
+    return(params = list(mu=mu,phi=phi))
 }
 
 # Define UI for application that draws a histogram
@@ -48,16 +51,16 @@ ui <- fluidPage(
     fluidRow(
         column(3,
                wellPanel(
-                   radioButtons("param","R2 prior parameterization",choiceNames=c("(mean,precision)","(a,b)"),choiceValues=c('mutau','ab')),
-                   conditionalPanel(condition = "input.param == 'mutau'",
+                   radioButtons("param","R2 prior parameterization",choiceNames=c("(mean,precision)","(a,b)"),choiceValues=c('muphi','ab')),
+                   conditionalPanel(condition = "input.param == 'muphi'",
                            sliderInput("mu",
                                        "Mean",
                                        value=0.5, 
                                        min=0,max=1,step=0.01),
-                           sliderInput("tau",
+                           sliderInput("phi",
                                        "Precision",
                                        value=50, 
-                                       min=4,max=100,step=1)
+                                       min=1,max=100,step=1)
                     ),
                    conditionalPanel(condition = "input.param == 'ab'",
                        sliderInput("a",
@@ -116,6 +119,7 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output,session) {
     sample_R2D2 <- reactive({
+        set.seed(1)
         R2 <- rbeta(input$N,shape1=input$a,shape2 = input$b)
         w <- rbetapr(input$N,shape1=input$a,shape2=input$b)
         phi <- rdirichlet(input$N,alpha=rep(input$a_pi,input$p))
@@ -126,9 +130,9 @@ server <- function(input, output,session) {
     })
     
     observeEvent(input$mu, {
-        if(input$param=='mutau'){
-            updateSliderInput(session, "tau", min=ceiling(1/(input$mu*(1-input$mu))))
-            shape <- get_ab_beta_param(input$mu,input$tau)
+        if(input$param=='muphi'){
+            #updateSliderInput(session, "phi", min=ceiling(1/(input$mu*(1-input$mu))))
+            shape <- get_ab_beta_param(input$mu,input$phi)
             updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
             updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
             updateSliderInput(session, "a", value=shape$a)
@@ -137,9 +141,9 @@ server <- function(input, output,session) {
         
     })
     
-    observeEvent(input$tau, {
-        if(input$param=='mutau'){
-            shape <- get_ab_beta_param(input$mu,input$tau)
+    observeEvent(input$phi, {
+        if(input$param=='muphi'){
+            shape <- get_ab_beta_param(input$mu,input$phi)
             updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
             updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
             updateSliderInput(session, "a", value=shape$a)
@@ -150,19 +154,19 @@ server <- function(input, output,session) {
     
     observeEvent(input$a, {
         if(input$param=='ab'){
-            mutau <- get_mutau_beta_param(input$a,input$b)
-            updateSliderInput(session, "tau", max=max(1000,ceiling(mutau$tau)))
-            updateSliderInput(session, "mu", value=mutau$mu)
-            updateSliderInput(session, "tau", value=mutau$tau)
+            muphi <- get_muphi_beta_param(input$a,input$b)
+            updateSliderInput(session, "phi", max=max(1000,ceiling(muphi$phi)))
+            updateSliderInput(session, "mu", value=muphi$mu)
+            updateSliderInput(session, "phi", value=muphi$phi)
         }
     })
     
     observeEvent(input$b, {
         if(input$param=='ab'){
-            mutau <- get_mutau_beta_param(input$a,input$b)
-            updateSliderInput(session, "tau", max=max(1000,ceiling(mutau$tau)))
-            updateSliderInput(session, "mu", value=mutau$mu)
-            updateSliderInput(session, "tau", value=mutau$tau)
+            muphi <- get_muphi_beta_param(input$a,input$b)
+            updateSliderInput(session, "phi", max=max(1000,ceiling(muphi$phi)))
+            updateSliderInput(session, "mu", value=muphi$mu)
+            updateSliderInput(session, "phi", value=muphi$phi)
         }
     })
     output$R2_prior <- renderPlot({
