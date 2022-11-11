@@ -25,9 +25,6 @@ gg_histogram_style <- function(p,title,n_bins){
 
 get_ab_beta_param <- function(mu, phi) {
     shapes <- betaGetShapes(mu,phi)
-    # sigma2 <- mu*(1-mu)/(1+phi)
-    # a  <- ((1 - mu)/sigma2 - 1 / mu)
-    # b <- a * (1 / mu - 1)
     return(params = list(a=shapes$shape1,b=shapes$shape2))
 }
 
@@ -40,12 +37,6 @@ get_muphi_beta_param <- function(a, b) {
 # Define UI for application that draws a histogram
 ui <- fluidPage(
     withMathJax(),
-    # section below allows in-line LaTeX via $ in mathjax.
-    # tags$div(HTML("
-    #             MathJax.Hub.Config({
-    #             tex2jax: {inlineMath: [['$','$']}
-    #             });
-    #             ")),
     # Application title
     titlePanel("R2-D2 prior distribution"),
     fluidRow(
@@ -59,17 +50,18 @@ ui <- fluidPage(
                                        min=0,max=1,step=0.01),
                            sliderInput("phi",
                                        "Precision",
-                                       value=50, 
-                                       min=1,max=100,step=1)
+                                       value=10, 
+                                       min=0.5,max=20,step=0.5),
+                           textInput('phi_text','Precision (custom value)')
                     ),
                    conditionalPanel(condition = "input.param == 'ab'",
                        sliderInput("a",
                                    "a",
-                                   value=get_ab_beta_param(0.5,100)$a, 
+                                   value=get_ab_beta_param(0.5,10)$a, 
                                    min=0,max=20,step=0.1),
                        sliderInput("b",
                                    "b",
-                                   value=get_ab_beta_param(0.5,100)$b, 
+                                   value=get_ab_beta_param(0.5,10)$b, 
                                    min=0,max=20,step=0.1)
                    ),
                    h4('Prior concentration'),
@@ -129,10 +121,24 @@ server <- function(input, output,session) {
         return(list(R2=R2,w=w,phi=phi,sigma=sigma,beta=beta))
     })
     
-    observeEvent(input$mu, {
+    muphi <- reactive({
+        list(input$mu,input$phi,input$phi_text)
+    })
+    
+    ab <- reactive({
+        list(input$a,input$b)
+    })
+    
+    observeEvent(muphi(), {
         if(input$param=='muphi'){
-            #updateSliderInput(session, "phi", min=ceiling(1/(input$mu*(1-input$mu))))
-            shape <- get_ab_beta_param(input$mu,input$phi)
+            if(is.na(as.numeric(input$phi_text))){
+                phi_text <- ''
+            }else if(as.numeric(input$phi_text)<=0){
+                phi_text <- ''
+            }else{
+                phi_text <- input$phi_text
+            }
+            shape <- get_ab_beta_param(input$mu,if(nchar(phi_text)==0) input$phi else as.numeric(phi_text))
             updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
             updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
             updateSliderInput(session, "a", value=shape$a)
@@ -141,30 +147,10 @@ server <- function(input, output,session) {
         
     })
     
-    observeEvent(input$phi, {
-        if(input$param=='muphi'){
-            shape <- get_ab_beta_param(input$mu,input$phi)
-            updateSliderInput(session, "a", max=max(20,ceiling(shape$a)))
-            updateSliderInput(session, "b", max=max(20,ceiling(shape$b)))
-            updateSliderInput(session, "a", value=shape$a)
-            updateSliderInput(session, "b", value=shape$b)
-        }
-
-    })
-    
-    observeEvent(input$a, {
+    observeEvent(ab(), {
         if(input$param=='ab'){
             muphi <- get_muphi_beta_param(input$a,input$b)
-            updateSliderInput(session, "phi", max=max(1000,ceiling(muphi$phi)))
-            updateSliderInput(session, "mu", value=muphi$mu)
-            updateSliderInput(session, "phi", value=muphi$phi)
-        }
-    })
-    
-    observeEvent(input$b, {
-        if(input$param=='ab'){
-            muphi <- get_muphi_beta_param(input$a,input$b)
-            updateSliderInput(session, "phi", max=max(1000,ceiling(muphi$phi)))
+            updateSliderInput(session, "phi", max=min(1000,ceiling(muphi$phi)))
             updateSliderInput(session, "mu", value=muphi$mu)
             updateSliderInput(session, "phi", value=muphi$phi)
         }
