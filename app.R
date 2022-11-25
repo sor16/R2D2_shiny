@@ -64,14 +64,14 @@ ui <- fluidPage(
                                    value=get_ab_beta_param(0.5,10)$b, 
                                    min=0,max=20,step=0.1)
                    ),
-                   h4('Prior concentration'),
+                   h5('Prior concentration'),
                    sliderInput("a_pi",
                                "a_pi",
                                value=1, 
                                min=0,max=10,step=0.01),
                ),
                wellPanel(
-                   h4("Settings"),
+                   h4("Data setup"),
                    sliderInput("n",
                                "Sample size",
                                value=100, 
@@ -80,7 +80,9 @@ ui <- fluidPage(
                                "Number of regression parameters",
                                value=4, 
                                min = 1,max=100,step=1),
-                   
+               ),
+               wellPanel(
+                   h4("Plot settings"),
                    sliderInput("n_samples",
                                "Number of samples",
                                value = 1000, 
@@ -99,10 +101,11 @@ ui <- fluidPage(
                     plotOutput("R2_prior")
                 ),
                 box(
-                    plotOutput("tau2_prior")
+                    #plotOutput("tau2_prior")
+                    plotOutput("phi_prior")
                 ),
                 box(
-                    plotOutput("phi_prior")
+                    plotOutput("p_eff_prior")
                 ),
                 box(
                     plotOutput("beta_prior")
@@ -125,7 +128,7 @@ server <- function(input, output,session) {
         #shrinkage factor, sample
         SS_x=matrix(rchisq(input$n_samples*input$p,df = input$n),nrow=input$n_samples)
         kappa <-  1 / (1 + tau2*phi*SS_x)
-        p_eff <- colSums(1-kappa)
+        p_eff <- rowSums(1-kappa)
         return(list(R2=R2,tau2=tau2,phi=phi,sigma=sigma,beta=beta,p_eff=p_eff))
     })
     
@@ -169,17 +172,25 @@ server <- function(input, output,session) {
         gg_histogram_style(expression(paste(R^{2}," - prior distribution (~Beta(a,b))")),input$bins) +
         scale_x_continuous(limits=c(0,1))
     })
-    output$tau2_prior <- renderPlot({
-        sample_list <- sample_R2D2()
-        ggplot(data=data.frame(tau2=sample_list$tau2),aes(tau2)) %>%
-            gg_histogram_style(expression(paste(tau^{2}," - prior distribution (~BetaPrime(a,b))")),input$bins)
-    })
+    # output$tau2_prior <- renderPlot({
+    #     sample_list <- sample_R2D2()
+    #     ggplot(data=data.frame(tau2=sample_list$tau2),aes(tau2)) %>%
+    #         gg_histogram_style(expression(paste(tau^{2}," - prior distribution (~BetaPrime(a,b))")),input$bins)
+    # })
     output$phi_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(phi=sample_list$phi[,1]),aes(phi)) %>%
             gg_histogram_style(expression(paste(phi[j]," - marginal prior distribution (",phi,"~","Dirichlet(",a[pi],"...",a[pi],"))")),input$bins) +
             scale_x_continuous(limits=c(0,1))
     })
+    
+    output$p_eff_prior <- renderPlot({
+        sample_list <- sample_R2D2()
+        ggplot(data=data.frame(p_eff_prop=sample_list$p_eff/input$p),aes(p_eff_prop)) %>%
+            gg_histogram_style(expression(paste(p[eff]/p," - prior distribution")),input$bins) +
+            scale_x_continuous(limits=c(0,1))
+    })
+    
     output$beta_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(beta=sample_list$beta[,1]),aes(beta)) %>%
