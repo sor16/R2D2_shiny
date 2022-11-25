@@ -16,7 +16,15 @@ gg_theme <- function(){
     )
 }
 
-gg_histogram_style <- function(p,title,n_bins){
+geom_line_custom <- function(p,title){
+    p + geom_line(color="#000000",size=1.5) +
+        geom_area(fill="#0099F8") +
+        scale_y_continuous(expand=c(0, 0.02)) +
+        labs(title=title,x="",y="Density") +
+        gg_theme()
+}
+
+geom_histogram_custom <- function(p,title,n_bins){
     p + geom_histogram(color="#000000",fill="#0099F8",bins=n_bins) +
         scale_y_continuous(expand=c(0, 0)) +
         labs(title=title,x="",y="Count") +
@@ -69,6 +77,7 @@ ui <- fluidPage(
                                "a_pi",
                                value=1, 
                                min=0,max=10,step=0.01),
+                   textInput('a_pi_text','Prior concentration (custom value)')
                ),
                wellPanel(
                    h4("Data setup"),
@@ -121,26 +130,32 @@ server <- function(input, output,session) {
         set.seed(1)
         R2 <- rbeta(input$n_samples,shape1=input$a,shape2 = input$b)
         tau2 <- rbetapr(input$n_samples,shape1=input$a,shape2=input$b)
-        phi <- rdirichlet(input$n_samples,alpha=rep(input$a_pi,input$p))
-        #sigma <- 1
+        phi <- rdirichlet(input$n_samples,alpha=rep(vals$a_pi,input$p))
         sigma <- rexp(input$n_samples,rate=1)
         beta <- sapply(1:input$p,function(j) rnorm(input$n_samples,0,sd=sqrt(2)*sigma*sqrt(0.5*phi[,j]*tau2)))
-        #shrinkage factor, sample
+        #shrinkage factor
         SS_x=matrix(rchisq(input$n_samples*input$p,df = input$n),nrow=input$n_samples)
         kappa <-  1 / (1 + tau2*phi*SS_x)
+        #num effective parameters
         p_eff <- rowSums(1-kappa)
         return(list(R2=R2,tau2=tau2,phi=phi,sigma=sigma,beta=beta,p_eff=p_eff))
     })
     
-    muphi <- reactive({
+    vals <- reactiveValues(a_pi = 1)
+    
+    muphi_input <- reactive({
         list(input$mu,input$phi,input$phi_text)
     })
     
-    ab <- reactive({
+    ab_input <- reactive({
         list(input$a,input$b)
     })
     
-    observeEvent(muphi(), {
+    a_pi_input <- reactive({
+        list(input$a_pi,input$a_pi_text)
+    })
+    
+    observeEvent(muphi_input(), {
         if(input$param=='muphi'){
             if(is.na(as.numeric(input$phi_text))){
                 phi_text <- ''
@@ -158,7 +173,7 @@ server <- function(input, output,session) {
         
     })
     
-    observeEvent(ab(), {
+    observeEvent(ab_input(), {
         if(input$param=='ab'){
             muphi <- get_muphi_beta_param(input$a,input$b)
             updateSliderInput(session, "phi", max=min(1000,ceiling(muphi$phi)))
@@ -166,35 +181,51 @@ server <- function(input, output,session) {
             updateSliderInput(session, "phi", value=muphi$phi)
         }
     })
+    
+    observeEvent(a_pi_input(), {
+        if(is.na(as.numeric(input$a_pi_text))){
+            a_pi_text <- ''
+        }else if(as.numeric(input$a_pi_text)<=0){
+            a_pi_text <- ''
+        }else{
+            a_pi_text <- input$a_pi_text
+        }
+        print(input$a_pi_text)
+        print(a_pi_text)
+        if(nchar(a_pi_text)==0){
+            vals$a_pi <- input$a_pi
+        }else{
+            vals$a_pi <- as.numeric(a_pi_text)
+        }
+        print(vals$a_pi)
+        
+    })
     output$R2_prior <- renderPlot({
-        sample_list <- sample_R2D2()
-        ggplot(data=data.frame(R2=sample_list$R2),aes(R2)) %>%
-        gg_histogram_style(expression(paste(R^{2}," - prior distribution (~Beta(a,b))")),input$bins) +
+        #marginal dirichlet for parameter j is beta with shape1=a_j and shape2=sum_{i!=j} a_i 
+        plot_dat=tibble(x=seq(0,1,by=0.001),R2=dbeta(x,shape1=input$a,shape2=input$b))
+        ggplot(plot_dat,aes(x,R2)) %>%
+        geom_line_custom(expression(paste(R^{2}," - prior distribution (~Beta(a,b))"))) +
         scale_x_continuous(limits=c(0,1))
     })
-    # output$tau2_prior <- renderPlot({
-    #     sample_list <- sample_R2D2()
-    #     ggplot(data=data.frame(tau2=sample_list$tau2),aes(tau2)) %>%
-    #         gg_histogram_style(expression(paste(tau^{2}," - prior distribution (~BetaPrime(a,b))")),input$bins)
-    # })
     output$phi_prior <- renderPlot({
-        sample_list <- sample_R2D2()
-        ggplot(data=data.frame(phi=sample_list$phi[,1]),aes(phi)) %>%
-            gg_histogram_style(expression(paste(phi[j]," - marginal prior distribution (",phi,"~","Dirichlet(",a[pi],"...",a[pi],"))")),input$bins) +
+        #marginal dirichlet for parameter j is beta with shape1=a_j and shape2=sum_{i!=j} a_i 
+        plot_dat=tibble(x=seq(0,1,by=0.001),phi=dbeta(x,shape1=vals$a_pi,shape2=(input$p-1)*vals$a_pi))
+        ggplot(data=plot_dat,aes(x,phi)) %>%
+            geom_line_custom(expression(paste(phi[j]," - marginal prior distribution (",phi,"~","Dirichlet(",a[pi],"...",a[pi],"))"))) +
             scale_x_continuous(limits=c(0,1))
     })
     
     output$p_eff_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(p_eff_prop=sample_list$p_eff/input$p),aes(p_eff_prop)) %>%
-            gg_histogram_style(expression(paste(p[eff]/p," - prior distribution")),input$bins) +
+            geom_histogram_custom(expression(paste(p[eff]/p," - prior distribution")),input$bins) +
             scale_x_continuous(limits=c(0,1))
     })
     
     output$beta_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(beta=sample_list$beta[,1]),aes(beta)) %>%
-        gg_histogram_style(expression(paste(beta[j]," - marginal prior distribution (~N(0,",sigma^2,phi[j],omega,"))")),input$bins) +
+        geom_histogram_custom(expression(paste(beta[j]," - marginal prior distribution (~N(0,",sigma^2,tau^{2},phi[j],"))")),input$bins) +
         scale_x_continuous(limits=c(-3,3))
     })
 }
