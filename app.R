@@ -72,12 +72,16 @@ ui <- fluidPage(
                ),
                wellPanel(
                    h4("Settings"),
+                   sliderInput("n",
+                               "Sample size",
+                               value=100, 
+                               min = 100,max=1000,step=1),
                    sliderInput("p",
                                "Number of regression parameters",
                                value=4, 
                                min = 1,max=100,step=1),
                    
-                   sliderInput("N",
+                   sliderInput("n_samples",
                                "Number of samples",
                                value = 1000, 
                                min = 0,max=10000,step=10),
@@ -95,7 +99,7 @@ ui <- fluidPage(
                     plotOutput("R2_prior")
                 ),
                 box(
-                    plotOutput("w_prior")
+                    plotOutput("tau2_prior")
                 ),
                 box(
                     plotOutput("phi_prior")
@@ -112,13 +116,17 @@ ui <- fluidPage(
 server <- function(input, output,session) {
     sample_R2D2 <- reactive({
         set.seed(1)
-        R2 <- rbeta(input$N,shape1=input$a,shape2 = input$b)
-        w <- rbetapr(input$N,shape1=input$a,shape2=input$b)
-        phi <- rdirichlet(input$N,alpha=rep(input$a_pi,input$p))
-        sigma <- 1
-        #sigma <- rexp(input$N,rate=1)
-        beta <- sapply(1:input$p,function(j) rnorm(input$N,0,sd=sqrt(2)*sigma*sqrt(0.5*phi[,j]*w)))
-        return(list(R2=R2,w=w,phi=phi,sigma=sigma,beta=beta))
+        R2 <- rbeta(input$n_samples,shape1=input$a,shape2 = input$b)
+        tau2 <- rbetapr(input$n_samples,shape1=input$a,shape2=input$b)
+        phi <- rdirichlet(input$n_samples,alpha=rep(input$a_pi,input$p))
+        #sigma <- 1
+        sigma <- rexp(input$n_samples,rate=1)
+        beta <- sapply(1:input$p,function(j) rnorm(input$n_samples,0,sd=sqrt(2)*sigma*sqrt(0.5*phi[,j]*tau2)))
+        #shrinkage factor, sample
+        SS_x=matrix(rchisq(input$n_samples*input$p,df = input$n),nrow=input$n_samples)
+        kappa <-  1 / (1 + tau2*phi*SS_x)
+        p_eff <- colSums(1-kappa)
+        return(list(R2=R2,tau2=tau2,phi=phi,sigma=sigma,beta=beta,p_eff=p_eff))
     })
     
     muphi <- reactive({
@@ -161,10 +169,10 @@ server <- function(input, output,session) {
         gg_histogram_style(expression(paste(R^{2}," - prior distribution (~Beta(a,b))")),input$bins) +
         scale_x_continuous(limits=c(0,1))
     })
-    output$w_prior <- renderPlot({
+    output$tau2_prior <- renderPlot({
         sample_list <- sample_R2D2()
-        ggplot(data=data.frame(w=sample_list$w),aes(w)) %>%
-            gg_histogram_style(expression(paste(omega," - prior distribution (~BetaPrime(a,b))")),input$bins)
+        ggplot(data=data.frame(tau2=sample_list$tau2),aes(tau2)) %>%
+            gg_histogram_style(expression(paste(tau^{2}," - prior distribution (~BetaPrime(a,b))")),input$bins)
     })
     output$phi_prior <- renderPlot({
         sample_list <- sample_R2D2()
@@ -175,7 +183,7 @@ server <- function(input, output,session) {
     output$beta_prior <- renderPlot({
         sample_list <- sample_R2D2()
         ggplot(data=data.frame(beta=sample_list$beta[,1]),aes(beta)) %>%
-        gg_histogram_style(expression(paste(beta[j]," - prior distribution (~N(0,",sigma^2,phi[j],omega,"))")),input$bins) +
+        gg_histogram_style(expression(paste(beta[j]," - marginal prior distribution (~N(0,",sigma^2,phi[j],omega,"))")),input$bins) +
         scale_x_continuous(limits=c(-3,3))
     })
 }
